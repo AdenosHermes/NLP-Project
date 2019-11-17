@@ -26,126 +26,13 @@ args = parser.parse_args()
 eps_a = args.eps
 
 learning_rate = 8e-3
-batch_size = 16
+batch_size = 32
 output_size = 2
 hidden_size = 256
 embedding_length = 300
 
 TEXT, vocab_size, word_embeddings, train_iter, valid_iter, test_iter = load_data.load_dataset(rate=args.r, batch_size=batch_size)
 
-class LaProp(Optimizer):
-    def __init__(self, params, lr=1e-3, betas=(0.9, 0.5), eps=1e-15,
-                 weight_decay=0, amsgrad=False, centered=False, Nesterov=1E20, V=10):
-        #betas = (betas, 1 - (1 - betas) ** 2)
-        self.V = V
-        self.centered = centered
-        if not 0.0 <= lr:
-            raise ValueError("Invalid learning rate: {}".format(lr))
-        if not 0.0 <= eps:
-            raise ValueError("Invalid epsilon value: {}".format(eps))
-        if not 0.0 <= betas[0] < 1.0:
-            raise ValueError("Invalid beta parameter at index 0: {}".format(betas[0]))
-        if not 0.0 <= betas[1] < 1.0:
-            raise ValueError("Invalid beta parameter at index 1: {}".format(betas[1]))
-        defaults = dict(lr=lr, betas=betas, eps=eps,
-                        weight_decay=weight_decay, amsgrad=amsgrad)
-        super(LaProp, self).__init__(params, defaults)
-        self.Nesterov=Nesterov
-
-    def __setstate__(self, state):
-        super(LaProp, self).__setstate__(state)
-        for group in self.param_groups:
-            group.setdefault('amsgrad', False)
-
-    def step(self, closure=None):
-        """Performs a single optimization step.
-
-        Arguments:
-            closure (callable, optional): A closure that reevaluates the model
-                and returns the loss.
-        """
-        loss = None
-        if closure is not None:
-            loss = closure()
-        Nesterov = False
-        for group in self.param_groups:
-            for p in group['params']:
-                if p.grad is None:
-                    continue
-                grad = p.grad.data
-                if grad.is_sparse:
-                    raise RuntimeError('Adam does not support sparse gradients, please consider SparseAdam instead')
-                amsgrad = group['amsgrad']
-
-                state = self.state[p]
-
-                # State initialization
-                if len(state) == 0:
-                    state['step'] = 0
-                    # Exponential moving average of gradient values
-                    state['exp_avg'] = torch.zeros_like(p.data)#.uniform_( -2 *group['eps'], 2 * group['eps'])
-                    # Exponential moving average of squared gradient values
-                    state['exp_avg_sq'] = torch.zeros_like(p.data)#.uniform_(group['eps'] ** 2 , (2 * group['eps']) ** 2)
-                    state['exp_mean_avg_sq'] = torch.zeros_like(p.data)
-                    if amsgrad:
-                        # Maintains max of all exp. moving avg. of sq. grad. values
-                        state['max_exp_avg_sq'] = torch.zeros_like(p.data)
-
-                exp_avg, exp_avg_sq, exp_mean_avg_sq = state['exp_avg'], state['exp_avg_sq'], state['exp_mean_avg_sq']
-                if amsgrad:
-                    max_exp_avg_sq = state['max_exp_avg_sq']
-                beta1, beta2 = group['betas']
-
-                state['step'] += 1
-                #if self.Nesterov:
-                Nesterov = ((state['step'] % 2) % self.Nesterov == self.Nesterov - 1)
-                #print()
-
-                if self.centered:
-                    exp_mean_avg_sq.mul_(beta2).add_(1 - beta2, grad)
-                    mean = exp_mean_avg_sq ** 2
-                bias_correction1 = 1 - beta1 ** state['step']
-                if Nesterov == True:
-                    bias_correction1 = 1 - beta1 ** (state['step'] + 1)
-                bias_correction2 = 1 - beta2 ** state['step']
-                
-                exp_avg_sq.mul_(beta2).addcmul_(1 - beta2, grad, grad)
-                if amsgrad:
-                    print('No!')
-                else:
-
-                    
-                    denom = exp_avg_sq
-                    if self.centered:
-                        denom = denom - mean
-                    denom = (denom / bias_correction2).sqrt().add(group['eps'])
-                    grad2 = grad / denom
-
-                    exp_avg.mul_(beta1).add_(1 - beta1, grad2)
-                    if Nesterov == True:
-                        advance_m2 = exp_avg_sq.mul(beta2).add(1 - beta2, grad **2).sqrt().add(group['eps'])
-                        bias_correction2 = 1 - beta2 ** (state['step'] + 1)
-                        grad2 = grad / (advance_m2 / math.sqrt(bias_correction2))
-                        advance_m = exp_avg.mul(beta1).add(1 - beta1, grad2)
-                
-                
-                step_size = group['lr'] / bias_correction1
-                
-                #if state['step'] >= 50:
-                if True:
-                    if Nesterov:
-                        p.data.add_(-step_size, advance_m)
-                    else:
-                        p.data.add_(-step_size, exp_avg)
-                    if group['weight_decay'] != 0:
-                        p.data.add_(group['lr'] * group['weight_decay'], - p.data)
-                    
-                p.data[p.data.abs() > self.V] = 2 * p.data[p.data.abs() > self.V].sign() * self.V - p.data[p.data.abs() 
-                                                                                                         > self.V]
-                exp_avg[p.data.abs() > self.V].mul_(-1)
-        if state['step'] == 50:
-            print('start')
-        return 0, 0, 0, 0
 
 def clip_gradient(model, clip_value):
     params = list(filter(lambda p: p.grad is not None, model.parameters()))
